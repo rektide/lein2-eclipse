@@ -1,12 +1,20 @@
 (ns leiningen.eclipse
   "Create Eclipse project descriptor files."
-  (:use [clojure.contrib.duck-streams :only [with-out-writer]])
-  (:use [clojure.contrib.java-utils :only [file]])
+  (:use [clojure.java.io :only [file writer]])
   (:use [clojure.contrib.prxml :only [prxml *prxml-indent*]])
-  (:use [clojure.contrib.str-utils :only [re-sub]])
-  (:use [leiningen.deps :only [deps]])
+  (:require [clojure.string])
+  (:use [leiningen.deps :only [deps]]
+        [leiningen.core.classpath :only [get-classpath]])
   (:import [java.io File])
   (:import [java.util.regex Pattern]))
+  
+(defmacro with-out-writer
+  "Opens a writer on f, binds it to *out*, and evalutes body.
+Anything printed within body will be written to f."
+  [f & body]
+  `(with-open [stream# (writer ~f)]
+     (binding [*out* stream#]
+       ~@body)))
 
 ;; copied from jar.clj
 (defn- unix-path
@@ -16,7 +24,7 @@
 ;; copied from jar.clj
 (defn- trim-leading-str
   [s to-trim]
-  (re-sub (re-pattern (str "^" (Pattern/quote to-trim))) "" s))
+  (clojure.string/replace s (re-pattern (str "^" (Pattern/quote to-trim))) ""))
 
 (defn- directory?
   [arg]
@@ -31,27 +39,30 @@
   [project]
   (let [root (str (unix-path (:root project)) \/)
         noroot  #(trim-leading-str (unix-path %) root)
-        [resources-path compile-path source-path test-path]
-        (map noroot (map project [:resources-path
-				  :compile-path
-				  :source-path
-				  :test-path]))]
+        [compile-path]
+        (map noroot (map project [:compile-path]))
+	[resource-paths source-paths test-paths]
+        (map #(map noroot %) (map project [:resource-paths
+				          :source-paths
+				          :test-paths]))
+	full-classpath   (get-classpath project)
+	pruned-classpath (remove #(or (= compile-path %)
+	                              (some #{%} (mapcat project [:resource-paths
+								  :source-paths
+								  :test-paths])))
+				 full-classpath)]
     (prxml [:decl!]
 	   [:classpath
-	    (if (directory? source-path)
-	      [:classpathentry {:kind "src"
-				:path source-path}])
-	    (if (directory? resources-path)
-		[:classpathentry {:kind "src"
-				  :path resources-path}])
-	    (if (directory? test-path)
-	      [:classpathentry {:kind "src"
-				:path test-path}])
+	    (map (fn [c] (when (directory? c) [:classpathentry {:kind "src" :path c}]))
+	      source-paths)
+	    (map (fn [c] [:classpathentry {:kind "lib" :path c}])
+	      pruned-classpath)
+	    (map (fn [c] (when (directory? c) [:classpathentry {:kind "src" :path c}]))
+	      test-paths)
+	    (map (fn [c] (when (directory? c) [:classpathentry {:kind "src" :path c}]))
+	      resource-paths)
 	    [:classpathentry {:kind "con"
 			       :path "org.eclipse.jdt.launching.JRE_CONTAINER"}]
-	    (for [library (list-libraries project)]
-	      [:classpathentry {:kind "lib"
-				:path (noroot library)}])
 	    [:classpathentry {:kind "output"
 			       :path compile-path}]
 	    ])))
@@ -82,7 +93,7 @@
   (binding [*prxml-indent* 2]
     (with-out-writer
       (file (:root project) ".classpath")
-      (create-classpath project))
+    (create-classpath project))
     (println "Created .classpath")
     (with-out-writer
       (file (:root project) ".project")
