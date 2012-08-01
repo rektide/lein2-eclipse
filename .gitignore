@@ -1,6 +1,7 @@
 .classpath
 .project
-classes
+/classes
 lein-eclipse.jar
-lib
+/lib
+/target
 pom.xml
