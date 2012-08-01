@@ -5,3 +5,4 @@ lein-eclipse.jar
 /lib
 /target
 pom.xml
+pom.xml.asc
