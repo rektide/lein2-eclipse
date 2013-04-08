@@ -43,18 +43,22 @@ Anything printed within body will be written to f."
         (map noroot (map project [:compile-path]))
 	[resource-paths source-paths test-paths]
         (map #(map noroot %) (map project [:resource-paths
+				          :java-source-paths
 				          :source-paths
 				          :test-paths]))
 	full-classpath   (get-classpath project)
 	pruned-classpath (remove #(or (= compile-path %)
 	                              (some #{%} (mapcat project [:resource-paths
 								  :source-paths
+								  :java-source-paths
 								  :test-paths])))
 				 full-classpath)]
     (prxml [:decl!]
 	   [:classpath
 	    (map (fn [c] (when (directory? c) [:classpathentry {:kind "src" :path c}]))
 	      source-paths)
+	    (map (fn [c] (when (directory? c) [:classpathentry {:kind "src" :path c}]))
+	      java-source-paths)
 	    (map (fn [c] [:classpathentry {:kind "lib" :path c}])
 	      pruned-classpath)
 	    (map (fn [c] (when (directory? c) [:classpathentry {:kind "src" :path c}]))
